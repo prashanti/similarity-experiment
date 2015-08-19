@@ -1,28 +1,19 @@
 
-def check_num_of_profiles():
-	infile=open("../data/realprofiles.ttl")
-	outfile=open("../data/VTOprofiles.tsv",'w')
-	for line in infile:
-		if "VTO" in line:
-			outfile.write(line.replace(" a ","\t"))
-	infile.close()
-	outfile.close()
-
 def get_profiles():
 	profiles=dict()
 	annotationpool=[]
-	infile=open("../data/VTOprofiles.tsv")
-	for line in infile:
-		profileid,annotations=line.replace(" .","").strip().split("\t")
-		profileid=profileid.replace("<http://purl.obolibrary.org/obo/","").replace("#profile>","")
-
-		annotationlist=annotations.split(" , ")
-		
-		if profileid not in profiles:
-			profiles[profileid]=set()
-		for annotation in annotationlist:
-			profiles[profileid].add(annotation.strip())
-	infile.close()
+	register('text/rdf+n3', Parser, 'rdflib.plugins.parsers.notation3', 'N3Parser')
+	g = rdflib.Graph()
+	result = g.parse('../data/realprofiles.ttl', format='n3')
+	for stmt in g:
+		profileid=stmt[0]
+		annotation=stmt[2]
+		if "VTO" in profileid:
+			profileid=profileid.replace("http://purl.obolibrary.org/obo/","").replace("#profile","")
+			if profileid not in profiles:
+				profiles[profileid]=set()
+			profiles[profileid].add(annotation)
+			annotationpool.append(annotation)
 	return profiles
 
 def create_random_profiles(realprofiles):
@@ -46,7 +37,6 @@ def create_random_profiles(realprofiles):
 
 
 def main():
-	check_num_of_profiles()
 	realprofiles=get_profiles()
 	randomprofiles=create_random_profiles(realprofiles)
 
@@ -56,5 +46,8 @@ def main():
 
 if __name__ == "__main__":
 	import os
+	import rdflib
+	import sys
+	from rdflib.plugin import register, Serializer, Parser
 	import random
 	main()
