@@ -76,6 +76,7 @@ def getmicaic(term1,term2,ancestors,icdict):
 		return 0,"None"
 
 def compute(randomprofiles,annotationpool,ancestors,icdict,queryprofilesize,numqueryprofiles):
+	selfmatch=dict()
 	out=open("../results/PilotResults_ExAttr(Q)_OldProfiles_Test.tsv",'w')
 	out.write("Query profile ID\tNumber of annotations replaced\tBest taxon match\tMedian similarity\tIC list\t\n")
 	queryprofileids=set()
@@ -86,9 +87,10 @@ def compute(randomprofiles,annotationpool,ancestors,icdict,queryprofilesize,numq
 			queryprofileids.add(profileid)
 	randomqueryprofileids=random.sample(queryprofileids, numqueryprofiles)
 	for profileid in randomqueryprofileids:
-		queryprofile=randomprofiles[profileid]
+		queryprofile=deepcopy(randomprofiles[profileid])
 		queryprofilesize=len(queryprofile)
 		print "Conducting experiment on ",profileid," Size",queryprofilesize
+		print "Profile",randomprofiles[profileid]
 		
 
 		replaced=set()
@@ -104,16 +106,26 @@ def compute(randomprofiles,annotationpool,ancestors,icdict,queryprofilesize,numq
 				
 			
 			print "Number replaced, ", i
-			
-			
-
 			bestmatch=max(results,key=itemgetter(0))[3]
 			similarity= max(results,key=itemgetter(0))[0]
 			iclist=",".join(str(x) for x in max(results,key=itemgetter(0))[2])
 			bestmatchdata=max(results,key=itemgetter(0))[1]
 			# if i==0:
 			# 	for x in bestmatchdata:
-			# 		print x[0],"\t",x[1],"\t",x[2],"\t",x[3]
+			# 		#term1,bestmatch,bestmica,bestic
+			# 		if x[0] == x[1] == x[2]:
+			# 			selfmatch[x[0]] = x[3]
+			# else:
+			# 	for x in bestmatchdata:
+			# 		print x[0],"\t\t",x[1],"\t\t",x[2]
+			# 		if x[0] != x[1]:
+			# 			print "inside"
+			# 			if x[3] > selfmatch[x[1]]:
+			# 				print x[0],"\t","best match ","\t",x[1],"\t","MICA\t",x[2],x[3]
+			# 				if x[2] not in ancestors[x[1]] or x[2] not in ancestors[x[2]]:
+			# 					print "MICA not in ancestors"
+
+
 			out.write(profileid+"\t"+str(i)+"\t"+bestmatch+"\t"+str(similarity)+"\t"+iclist+"\n")
 			if len(replaced)<len(queryprofile):
 				queryprofile,replaced=substitute_annotation(queryprofile,replaced,annotationpool)
