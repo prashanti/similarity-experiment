@@ -1,4 +1,6 @@
 from __future__ import division
+
+
 def get_profiles():
 	realprofiles=dict()
 	realprofileindices=dict()
@@ -41,7 +43,7 @@ def create_random_profiles(realprofiles,annotationpool):
 			randomprofiles[profileid]=set()
 		while (len(randomprofiles[profileid])<realprofilesize):
 			randomindex=random.randint(0,poolsize-1)
-			if (annotationpool[randomindex] not in randomprofiles[profileid]) and (randomindex not in selected):
+			if (randomindex not in selected):
 				randomprofiles[profileid].add(annotationpool[randomindex])
 				if profileid not in randomprofileindices:
 					randomprofileindices[profileid]=set()
