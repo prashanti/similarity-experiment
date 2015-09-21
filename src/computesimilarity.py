@@ -11,21 +11,6 @@ def substitute_annotation(profile,replaced,annotationpool):
 	profile[replaceindex]=annotationpool[replacementindex]
 	return profile,replaced
 
-
-def bp_test(profile1,profile2,icdict,ancestors):
-	finalsim=0
-	bestmatchic=[]
-	termmatchic=[]
-	matchdata=[]
-	for term1 in profile1:
-		termmatchic=[]
-		for term2 in profile2:
-			micaic,mica=getmicaic(term1,term2,ancestors,icdict)
-			print term1,"\t",term2,"\t",mica,"\t",micaic
-			
-			
-		
-
 def create_random_profiles(size,annotationpool,numprofiles):
 	queryprofiles=[]
 	randomindices=[]
@@ -47,29 +32,83 @@ def create_random_profiles(size,annotationpool,numprofiles):
 	return queryprofiles	
 
 
+def get_allpairs_medianic(profile1,profile2,icdict,ancestors,bpsimilaritydict,apsimilaritydict):
+	medianic=0
+	termmatchic=[]
+	for term1 in profile1:
+		for term2 in profile2:
+			termtuple=tuple(sorted((term1,term2)))
+
+			if termtuple in bpsimilaritydict:
+				termmatchic.append(bpsimilaritydict[termtuple][1])
+				apsimilaritydict.append((bpsimilaritydict[termtuple][1],bpsimilaritydict[termtuple][2]))
+			elif termtuple in apsimilaritydict:
+				termmatchic.append(apsimilaritydict[termtuple][0])
+			else:
+				micaic,mica=getmicaic(term1,term2,ancestors,icdict)
+				termmatchic.append(micaic)
+				apsimilaritydict[termtuple]=(micaic,mica)	
+	return np.median(termmatchic),apsimilaritydict
 
 
-def calculate_bestpairs(profile1,profile2,icdict,ancestors,similaritydict):
+
+def calculate_bestpairs_symmetric(profile1,profile2,icdict,ancestors,bpsimilaritydict):
 	finalsim=0
-	bestmatchic=[]
+	bestmatchiclist=[]
 	termmatchic=[]
 	matchdata=[]
 	for term1 in profile1:
 		termmatchic=[]
 		for term2 in profile2:
 			termtuple=tuple(sorted((term1,term2)))
-			if termtuple in similaritydict:
-				termmatchic.append(similaritydict[termtuple])
+			if termtuple in bpsimilaritydict:
+				termmatchic.append(bpsimilaritydict[termtuple])
 			
 			else:
 				micaic,mica=getmicaic(term1,term2,ancestors,icdict)
 				termmatchic.append((term2,micaic,mica))
-				similaritydict[termtuple]=(term2,micaic,mica)
+				bpsimilaritydict[termtuple]=(term2,micaic,mica)
 		bestmatch,bestic,bestmica=getmax(termmatchic)
-		bestmatchic.append(bestic)
+	mediansim1=np.median(bestmatchiclist)
+	
+
+	finalsim=0
+	bestmatchiclist=[]
+	termmatchic=[]
+	matchdata=[]
+	for term1 in profile2:
+		termmatchic=[]
+		for term2 in profile1:
+			termtuple=tuple(sorted((term1,term2)))
+			termmatchic.append(bpsimilaritydict[termtuple])
+		bestmatch,bestic,bestmica=getmax(termmatchic)
+		bestmatchiclist.append(bestic)
+			
+	mediansim2=np.median(bestmatchiclist)
+	return np.mean(mediansim1,mediansim2),bpsimilaritydict
+
+
+def calculate_bestpairs_asymmetric(profile1,profile2,icdict,ancestors,bpsimilaritydict):
+	finalsim=0
+	bestmatchiclist=[]
+	termmatchic=[]
+	matchdata=[]
+	for term1 in profile1:
+		termmatchic=[]
+		for term2 in profile2:
+			termtuple=tuple(sorted((term1,term2)))
+			if termtuple in bpsimilaritydict:
+				termmatchic.append(bpsimilaritydict[termtuple])
+			
+			else:
+				micaic,mica=getmicaic(term1,term2,ancestors,icdict)
+				termmatchic.append((term2,micaic,mica))
+				bpsimilaritydict[termtuple]=(term2,micaic,mica)
+		bestmatch,bestic,bestmica=getmax(termmatchic)
+		bestmatchiclist.append(bestic)
 		matchdata.append((term1,bestmatch,bestmica,bestic))	
-	mediansim=np.median(bestmatchic)
-	return mediansim,matchdata,similaritydict,bestmatchic
+	mediansim=np.median(bestmatchiclist)
+	return mediansim,matchdata,bpsimilaritydict,bestmatchiclist
 
 def getmax(lcslist):
 	micaic=0
@@ -95,7 +134,7 @@ def getmicaic(term1,term2,ancestors,icdict):
 		return 0,"None"
 
 
-def compute_without_substitution(queryprofiles,dbprofiles,ancestors,icdict,similaritydict):
+def compute_without_substitution(queryprofiles,dbprofiles,ancestors,icdict,bpsimilaritydict):
 	similarityscores=[]
 	querysizes=[]
 	dbprofilesizes=[]
@@ -108,8 +147,8 @@ def compute_without_substitution(queryprofiles,dbprofiles,ancestors,icdict,simil
 			dbprofilesizes.append(len(dbprofiles[databaseprofileid]))
 			bpmediansim=0
 			dbprofile=dbprofiles[databaseprofileid]
-			bpmediansim,matchdata,similaritydict,bestmatchic=calculate_bestpairs(query,dbprofile,icdict,ancestors,similaritydict)
-			resulttuple=(bpmediansim,matchdata,bestmatchic,databaseprofileid)
+			bpmediansim,matchdata,bpsimilaritydict,bestmatchiclist=calculate_bestpairs(query,dbprofile,icdict,ancestors,bpsimilaritydict)
+			resulttuple=(bpmediansim,matchdata,bestmatchiclist,databaseprofileid)
 			results.append(resulttuple)
 			allsimilarityscores.append(bpmediansim)
 		bestmatch=max(results,key=itemgetter(0))[3]
@@ -117,22 +156,17 @@ def compute_without_substitution(queryprofiles,dbprofiles,ancestors,icdict,simil
 		iclist=",".join(str(x) for x in max(results,key=itemgetter(0))[2])
 		bestmatchdata=max(results,key=itemgetter(0))[1]
 		similarityscores.append(similarity)
-	return similarityscores,allsimilarityscores,querysizes,dbprofilesizes,similaritydict
+	return similarityscores,allsimilarityscores,querysizes,dbprofilesizes,bpsimilaritydict
 
 
-
-
-def compute_with_substitution(randomprofiles,annotationpool,ancestors,icdict,queryprofilesize,numqueryprofiles,similaritydict):
+def compute_with_substitution(queryprofileids,randomprofiles,annotationpool,ancestors,icdict,queryprofilesize,numqueryprofiles,bpsimilaritydict):
 	selfmatch=dict()
 	bestsimilaritylist=[]
 	quantiles=dict()
-	queryprofileids=set()
 	bestmatchsimilarity=dict()
-	for profileid in randomprofiles:
-		if len(randomprofiles[profileid])==queryprofilesize:
-			queryprofileids.add(profileid)
-	randomqueryprofileids=random.sample(queryprofileids, numqueryprofiles)
-	for profileid in randomqueryprofileids:
+	
+	
+	for profileid in queryprofileids:
 		queryprofile=deepcopy(randomprofiles[profileid])
 		queryprofilesize=len(queryprofile)
 		replaced=set()
@@ -144,9 +178,8 @@ def compute_with_substitution(randomprofiles,annotationpool,ancestors,icdict,que
 			for databaseprofileid in randomprofiles:
 				bpmediansim=0
 				dbprofile=randomprofiles[databaseprofileid]
-
-				bpmediansim,matchdata,similaritydict,bestmatchic=calculate_bestpairs(queryprofile,dbprofile,icdict,ancestors,similaritydict)
-				resulttuple=(bpmediansim,matchdata,bestmatchic,databaseprofileid)
+				bpmediansim,matchdata,bpsimilaritydict,bestmatchiclist=calculate_bestpairs(queryprofile,dbprofile,icdict,ancestors,bpsimilaritydict)
+				resulttuple=(bpmediansim,matchdata,bestmatchiclist,databaseprofileid)
 				results.append(resulttuple)
 				
 			allsimilarityscores=[]
@@ -167,7 +200,7 @@ def compute_with_substitution(randomprofiles,annotationpool,ancestors,icdict,que
 				queryprofile,replaced=substitute_annotation(queryprofile,replaced,annotationpool)
 
 	
-	return similaritydict,bestsimilaritylist,quantiles
+	return bpsimilaritydict,bestsimilaritylist,quantiles
 
 def plot(figuredir):
 	fig = plt.figure()
@@ -199,14 +232,14 @@ def plot(figuredir):
 	fig.savefig("../results/DecaySimilarity.png", dpi=1200)
 
 
-def check_ic(annotationpool,ancestors,icdict,frequency):
+def check_ic(annotationpool,ancestors,icdict):
+	print "checking"
 	for annotation in set(annotationpool):
 		annic=icdict[annotation]
 		for anc in ancestors[annotation]:
 			ancic=icdict[anc]
 			if ancic > annic:
 				print annotation,annic,anc,ancic
-				print "Ann freq",frequency[annotation],"Anc freq",frequency[anc]
 
 def compute_ic(profiles,ancestors):
 	annotationcorpus=open("../AnnotationCorpus.txt",'w')
@@ -298,6 +331,43 @@ def prepare_expect_inputs(actualsimilarityscores,box_query,box_db,results):
 	stddev=np.std(residuals)
 	return stddev
 
+
+def compute_ic_profile_frequency(infile):
+	icdict=dict()
+	frequency=dict()
+	corpussize=0
+	for line in infile:
+		profileid,profileancestors=line.strip().split("\t")
+		profileancestors=profileancestors.split(",")
+		for term in profileancestors:
+			if term not in frequency:
+				frequency[term]=0
+			frequency[term]+=1
+		corpussize+=1
+	infile.close()
+	maxic=round(-math.log(1/corpussize),2)
+	for term in frequency:
+		ic=round((-math.log(frequency[term]/corpussize))/maxic,2)
+		icdict[term]=ic
+
+	return icdict,frequency	
+		
+def prepare_profile_corpus(dbprofiles,ancestors):
+	outfile=open("../data/Corpus_Profile_Frequency.txt",'w')
+	for profileid in dbprofiles:
+		profileancestors=set()
+		for annotation in set(dbprofiles[profileid]):
+			ancset=ancestors[annotation]
+			profileancestors.add(annotation)
+			profileancestors=set.union(profileancestors,ancset)
+		outfile.write(profileid+"\t"+",".join(profileancestors)+"\n")
+	outfile.close()
+
+
+
+
+
+	
 def compute_expect_scores(results,actualsimilarity,boxquerysize,boxdbsize,resstddev,numofdbprofiles):
 	# now compute expect scores for the individual comparison
 
@@ -353,21 +423,7 @@ def quant_results(infile,size):
 		decay.append(((initialscores[i]-finalscores[i])/finalscores[i])*100)
 	print "Mean decay",np.mean(decay)
 	print "Mean decayed similarity",np.mean(finalscores)
-	fig = plt.figure()
-	for profileid in scores:
-		numreplacedlist=[]
-		scorelist=[]
-		for replaced in scores[profileid]:
-			numreplacedlist.append(replaced)
-			scorelist.append(scores[profileid][replaced])
-		plt.plot
-	plt.xlabel('Number of annotations replaced')
-	plt.ylabel('Median best pair similarity')
-	plt.legend(['Query 1', 'Query 2','Query 3', 'Query 4','Query 5'], loc='upper right')
-	fig.suptitle("Query Profile Size "+str(size))
-	fig.savefig("../results/Decay_Profilesize_"+str(size)+".png", dpi=1200)
-
-
+	
 
 
 
@@ -391,9 +447,11 @@ def get_summary():
 def plot_decay():
 	figuredir="../results/Decay/"
 	fig = plt.figure()
-	fig1 = plt.figure()
-	legend=[]
-	for filename in os.listdir(figuredir):
+	
+	colors=['b','r','g']
+	i=0
+	for filename in [x for x in os.listdir(figuredir) if ".tsv" in x]:
+		fig = plt.figure()
 		infile=open(figuredir+filename)
 		scoredict=dict()
 		expectdict=dict()
@@ -401,10 +459,13 @@ def plot_decay():
 		meanexpect=[]
 		meansim=[]
 		error=[]
+		iclistdict=dict()
+		meanfirstquartile=[]
+		meanthirdquartile=[]
 		for line in infile:
 			if "Number" not in line:
 				data=line.strip().split("\t")
-				profileid,numreplaced,sim,expect=data[0],int(data[1]),float(data[3]),float(data[4])
+				profileid,numreplaced,sim,iclist,expect=data[0],int(data[1]),float(data[3]),data[4],float(data[5])
 				numreplacedset.add(numreplaced)
 				if numreplaced not in scoredict:
 					scoredict[numreplaced]=[]
@@ -412,18 +473,47 @@ def plot_decay():
 				if numreplaced not in expectdict:
 					expectdict[numreplaced]=[]
 				expectdict[numreplaced].append(sim)
-		legend.append("profile size: "+str(np.max(numreplaced)))		
+
+				if numreplaced not in iclistdict:
+					iclistdict[numreplaced]=[]
+				iclistdict[numreplaced].append([float(x) for x in iclist.split(",")])
+		
+
+		
 		for numreplaced in scoredict:
 			meansim.append(np.mean(scoredict[numreplaced]))
 			meanexpect.append(np.mean(expectdict[numreplaced]))
 			error.append(2*(np.std(scoredict[numreplaced])/math.sqrt(len(scoredict[numreplaced]))))
-		plt.errorbar(list(numreplacedset),meansim,yerr=error)
+			firstquartilelist=[]
+			thirdquartilelist=[]
+			for iclist in iclistdict[numreplaced]:
+				firstquartilelist.append(np.percentile(iclist,25))
+				thirdquartilelist.append(np.percentile(iclist,75))
+			meanfirstquartile.append(np.mean(firstquartilelist))
+			meanthirdquartile.append(np.mean(thirdquartilelist))
 
-	plt.ylim(0,1)
-	plt.legend(legend, loc='upper right')
-	plt.xlabel('Number of annotations replaced')
-	plt.ylabel('Median best pair similarity')
-	fig.savefig("../results/DecaySimilarity.png", dpi=1200)
+
+		legend=[]	
+		plt.errorbar(list(numreplacedset),meansim,yerr=error,color=colors[i])
+		plt.plot(list(numreplacedset),meanfirstquartile,'--',color=colors[i])
+		plt.plot(list(numreplacedset),meanthirdquartile,':',color=colors[i])
+		#legend.append("profile size: "+str(numreplaced)+" median")
+		#legend.append("profile size: "+str(numreplaced)+" first quartiles")
+		#legend.append("profile size: "+str(numreplaced)+" thirdquartiles")
+
+		legend.append( "median")
+		legend.append("first quartiles")
+		legend.append("thirdquartiles")
+		i+=1
+
+
+		plt.ylim(0,1)
+		plt.legend(legend, loc='lower right')
+
+		
+		plt.xlabel('Number of annotations replaced')
+		plt.ylabel('Median best pair similarity')
+		fig.savefig("../results/DecaySimilarity_"+str(numreplaced)+".png", dpi=1200)
 
 def plot_expect():
 	fig= plt.figure()
@@ -504,30 +594,88 @@ def plotquantiles(noisequantiles,quantiles):
 	plt.xlabel('Num of annotations replaced')
 	plt.show()	
 
-def do(queryprofilesize,dbprofiles,annotationpool,ancestors,icdict,numqueryprofiles,similaritydict,numofdbprofiles):
-	filename="../results/Decay/ProfileSize"+str(queryprofilesize)+"_Results.tsv"	
+
+
+
+def plot_ic_comparison():
+	fig,ax=plt.subplots()
+	colors=['b','g','r','b','g','r']
+	#Query profile ID	Number of annotations replaced	Best taxon match	Median similarity	IC list	Expect score
+	i=0
+	for filename in [x for x in os.listdir("../results/Decay/") if "Based" in x]:
+		infile=open("../results/Decay/"+filename)
+		size=int(filename.split("ProfileSize")[1].split("_")[0])
+		print filename,size
+		quant_results(infile,size)
+		infile=open("../results/Decay/ "+filename)
+		numreplaced=set()
+		expect=[]
+		expectdict=dict()
+		for line in infile:
+			if "Query" not in line:
+				data=line.strip().split()
+				numreplaced.add(int(data[1]))
+				if int(data[1]) not in expectdict:
+					expectdict[int(data[1])]=[]
+				expectdict[int(data[1])].append(float(data[3]))
+
+		error=[]
+	
+		for num in expectdict:
+			expect.append(np.mean(expectdict[num]))
+
+			error.append(2*(np.std(expectdict[num])/math.sqrt(len(expectdict[num]))))
+	
+
+		
+		if "ProfileBased" in filename:
+			#eb1=plt.errorbar(list(numreplaced),expect,yerr=error,color=colors[i],ls='--')
+			#eb1[-1][0].set_linestyle('--')
+			plt.plot(list(numreplaced),expect,"--",color=colors[i])
+		else:
+			#plt.errorbar(list(numreplaced),expect,yerr=error,color=colors[i])
+			plt.plot(list(numreplaced),expect,color=colors[i])
+		i+=1
+	plt.ylim(0,1)
+	
+	#legend=['Annotation frequency IC', 'Profile frequency IC']
+	#plt.legend([red_dot, (red_dot, white_cross)], ["Attr A", "Attr A+B"])
+	#plt.legend(legend, loc='upper right')
+
+	dotted_line = mlines.Line2D([], [], linewidth=1, linestyle="--", dashes=(3.7, 2), color='black')
+	line = mlines.Line2D([], [], linewidth=1, color='black')
+	blueline = mlines.Line2D([], [], linewidth=1, color='blue')
+	greenline = mlines.Line2D([], [], linewidth=1, color='green')
+	redline = mlines.Line2D([], [], linewidth=1, color='red')
+
+	plt.legend([redline,greenline,blueline,line, dotted_line], ["Size 40","Size 20","Size 10","Annotation based frequency", "Profile based frequency"],loc="lower right")
+
+
+	plt.xlabel('Num of annotations replaced')
+	plt.ylabel('Median Best pairs similarity')
+	plt.savefig("../results/ICComparison.png",dpi=1200)
+
+def do(queryprofileids,queryprofilesize,dbprofiles,annotationpool,ancestors,icdict,numqueryprofiles,bpsimilaritydict,numofdbprofiles,filename):
+		
 	out=open(filename,'w')
 	print "Profile size",queryprofilesize
-	queryprofiles=create_random_profiles(queryprofilesize,annotationpool,5)
 	
-	similaritydict,bestsimilaritylist,quantiles=compute_with_substitution(dbprofiles,annotationpool,ancestors,icdict,queryprofilesize,numqueryprofiles,similaritydict)
-
-	similarityscores,allsimilarityscores,querysizes,dbprofilesizes,similaritydict=compute_without_substitution(queryprofiles,dbprofiles,ancestors,icdict,similaritydict)
 	
-	noisequantiles=dict()
-	for j in [99,99.1,99.2,99.3,99.4,99.5,99.6,99.7,99.8,99.9,100]:
-		noisequantiles[j]=np.percentile(allsimilarityscores,j)
+	bpsimilaritydict,bestsimilaritylist,quantiles=compute_with_substitution(queryprofileids,dbprofiles,annotationpool,ancestors,icdict,queryprofilesize,numqueryprofiles,bpsimilaritydict)
 
-	#plotquantiles(noisequantiles,quantiles)
+	noisequeryprofiles=create_random_profiles(queryprofilesize,annotationpool,5)
+	similarityscores,allsimilarityscores,querysizes,dbprofilesizes,bpsimilaritydict=compute_without_substitution(noisequeryprofiles,dbprofiles,ancestors,icdict,bpsimilaritydict)
 
 	print "Mean noise to noise similarity",np.mean(similarityscores)
 
-	results,box_query,box_db,querylambda_,dblambda_=regression(allsimilarityscores,querysizes,dbprofilesizes)
+	#results,box_query,box_db,querylambda_,dblambda_=regression(allsimilarityscores,querysizes,dbprofilesizes)
+
+	results=load_regression()
+
+
 	resstddev=np.std(results.resid)
 
-	#resstddev=prepare_expect_inputs(allsimilarityscores,box_query,box_db,results)
-
-	out.write("Query profile ID\tNumber of annotations replaced\tBest taxon match\tMedian similarity\tExpect score\n")
+	out.write("Query profile ID\tNumber of annotations replaced\tBest taxon match\tMedian similarity\tIC list\tExpect score\n")
 	for tup in bestsimilaritylist:
 		query=tup[0]
 		numreplaced=tup[1]
@@ -535,35 +683,152 @@ def do(queryprofilesize,dbprofiles,annotationpool,ancestors,icdict,numqueryprofi
 		similarity=tup[3]
 		iclist=tup[4]
 		dbprofilesize=len(dbprofiles[bestmatch])
-		boxquerysize = boxcox(np.array([queryprofilesize]) + 1,lmbda=querylambda_)[0]
-		boxdbsize = boxcox(np.array([dbprofilesize]) + 1,lmbda=dblambda_)[0]
+		#boxquerysize = boxcox(np.array([queryprofilesize]) + 1,lmbda=querylambda_)[0]
+		#boxdbsize = boxcox(np.array([dbprofilesize]) + 1,lmbda=dblambda_)[0]
+		
+		boxquerysize = np.log(queryprofilesize)
+		boxdbsize = np.log(dbprofilesize)
+
 		expectscore=compute_expect_scores(results,similarity,boxquerysize,boxdbsize,resstddev,numofdbprofiles)
-		out.write(query+"\t"+str(numreplaced)+"\t"+bestmatch+"\t"+str(similarity)+"\t"+str(expectscore)+"\n")
+		out.write(query+"\t"+str(numreplaced)+"\t"+bestmatch+"\t"+str(similarity)+"\t"+ iclist+"\t"+str(expectscore)+"\n")
 	out.close()
-	return similaritydict
+	return bpsimilaritydict
+
+def load_regression():
+	infile=open("../results/test_lm.txt")
+	querysizes=[]
+	dbsizes=[]
+	scores=[]
+	for line in infile:
+		querysize,dbsize,score=line.strip().split("\t")
+		querysizes.append(float(querysize))
+		dbsizes.append(float(dbsize))
+		scores.append(float(score))
+
+	sizes = [querysizes,dbsizes]
+
+	ones = np.ones(len(sizes[0]))
+	X = sm.add_constant(np.column_stack((sizes[0], ones)))
+	for ele in sizes[1:]:
+		X = sm.add_constant(np.column_stack((ele, X)))
+	results = sm.OLS(scores, X).fit()
+	
+
+
+	predicted = results.fittedvalues
+	infile.close()
+	return results
+
+def compare_ic(dbprofiles,ancestors,numqueryprofiles,numofdbprofiles,annotationpool):
+		bpsimilaritydict_profile=dict()
+		bpsimilaritydict_annotation=dict()
+		profileicdict=dict()
+		prepare_profile_corpus(dbprofiles,ancestors)
+		infile=open("../data/Corpus_Profile_Frequency.txt")
+		profileicdict,profilefrequency=compute_ic_profile_frequency(infile)
+		infile.close()
+		print "Computed profile based IC"
+		annotationicdict=dict()
+		annotationicdict,annotationfrequency=compute_ic(dbprofiles,ancestors)
+		print "Computed annotation based IC"
+
+		icfile=open("IC.tsv",'w')
+		for term in annotationicdict:
+			icfile.write(str(annotationicdict[term])+"\t"+str(profileicdict[term])+"\n")
+		icfile.close()
+		
+
+		
+		
+
+		queryprofilesize=10
+		profileids=set()
+		for profileid in dbprofiles:
+			if len(dbprofiles[profileid])==queryprofilesize:
+				profileids.add(profileid)
+		queryprofileids=random.sample(profileids, numqueryprofiles)
+		filename="../results/Decay/ProfileBased_ProfileSize"+str(queryprofilesize)+"_Results.tsv"
+		bpsimilaritydict_profile=do(queryprofileids,queryprofilesize,dbprofiles,annotationpool,ancestors,profileicdict,numqueryprofiles,bpsimilaritydict_profile,numofdbprofiles,filename)
+
+
+		filename="../results/Decay/AnnotationBased_ProfileSize"+str(queryprofilesize)+"_Results.tsv"
+		bpsimilaritydict_annotation=do(queryprofileids,queryprofilesize,dbprofiles,annotationpool,ancestors,annotationicdict,numqueryprofiles,bpsimilaritydict_annotation,numofdbprofiles,filename)
+
+		print "Done", queryprofilesize
+
+		queryprofilesize=20
+		profileids=set()
+		for profileid in dbprofiles:
+			if len(dbprofiles[profileid])==queryprofilesize:
+				profileids.add(profileid)
+		queryprofileids=random.sample(profileids, numqueryprofiles)
+		filename="../results/Decay/ProfileBased_ProfileSize"+str(queryprofilesize)+"_Results.tsv"
+		bpsimilaritydict_profile=do(queryprofileids,queryprofilesize,dbprofiles,annotationpool,ancestors,profileicdict,numqueryprofiles,bpsimilaritydict_profile,numofdbprofiles,filename)
+
+		filename="../results/Decay/AnnotationBased_ProfileSize"+str(queryprofilesize)+"_Results.tsv"
+		bpsimilaritydict_annotation=do(queryprofileids,queryprofilesize,dbprofiles,annotationpool,ancestors,annotationicdict,numqueryprofiles,bpsimilaritydict_annotation,numofdbprofiles,filename)
+
+		print "Done", queryprofilesize
+
+		queryprofilesize=40
+		profileids=set()
+		for profileid in dbprofiles:
+			if len(dbprofiles[profileid])==queryprofilesize:
+				profileids.add(profileid)
+		queryprofileids=random.sample(profileids, numqueryprofiles)
+		filename="../results/Decay/ProfileBased_ProfileSize"+str(queryprofilesize)+"_Results.tsv"
+		bpsimilaritydict_profile=do(queryprofileids,queryprofilesize,dbprofiles,annotationpool,ancestors,profileicdict,numqueryprofiles,bpsimilaritydict_profile,numofdbprofiles,filename)
+
+		filename="../results/Decay/AnnotationBased_ProfileSize"+str(queryprofilesize)+"_Results.tsv"
+		bpsimilaritydict_annotation=do(queryprofileids,queryprofilesize,dbprofiles,annotationpool,ancestors,annotationicdict,numqueryprofiles,bpsimilaritydict_annotation,numofdbprofiles,filename)
+		print "Done", queryprofilesize
 
 
 def main():
-	plot_decay()
-	sys.exit()
+	
+	
 	queryprofilesize=sys.argv[1]
 	numqueryprofiles=int(sys.argv[2])
+	icflag=sys.argv[3]
 	numofdbprofiles=659
+	plot_ic_comparison()
+	sys.exit()
 
-	similaritydict=dict()
+
+	bpsimilaritydict=dict()
 	dbprofiles,annotationpool=load_randomprofiles()
 	print "Loaded randomprofiles"
 	ancestors=load_ancestors() 
 	print "Loaded ancestors"
-	icdict,frequency=compute_ic(dbprofiles,ancestors)
-	print "Computed IC"
+	compare_ic(dbprofiles,ancestors,numqueryprofiles,numofdbprofiles,annotationpool)
+	sys.exit()
+
 	
-	similaritydict=do(10,dbprofiles,annotationpool,ancestors,icdict,numqueryprofiles,similaritydict,numofdbprofiles)
+
+
+
+
+	if icflag =="profilebased":
+		prepare_profile_corpus(dbprofiles,ancestors)
+		infile=open("../data/Corpus_Profile_Frequency.txt")
+		icdict=compute_ic_profile_frequency(infile)
+		infile.close()
+		print "Computed profile based IC"
+	else:
+		icdict,frequency=compute_ic(dbprofiles,ancestors)
+		print "Computed annotation based IC"
+	
+	bpsimilaritydict=do(10,dbprofiles,annotationpool,ancestors,icdict,numqueryprofiles,bpsimilaritydict,numofdbprofiles)
+	sys.exit()
 	print "Done with 10"
-	similaritydict=do(20,dbprofiles,annotationpool,ancestors,icdict,numqueryprofiles,similaritydict,numofdbprofiles)
+	bpsimilaritydict=do(20,dbprofiles,annotationpool,ancestors,icdict,numqueryprofiles,bpsimilaritydict,numofdbprofiles)
 	print "Done with 20"
-	similaritydict=do(40,dbprofiles,annotationpool,ancestors,icdict,numqueryprofiles,similaritydict,numofdbprofiles)
+	bpsimilaritydict=do(40,dbprofiles,annotationpool,ancestors,icdict,numqueryprofiles,bpsimilaritydict,numofdbprofiles)
 	print "Done with 40"
+
+	plot_decay()
+	sys.exit()
+
 
 	
 
@@ -571,6 +836,8 @@ def main():
 
 if __name__ == "__main__":
 	import random
+	import matplotlib.lines as mlines
+	import os
 	import matplotlib.pyplot as plt
 	from copy import deepcopy
 	from operator import itemgetter
